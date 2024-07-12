@@ -1,0 +1,306 @@
+import requests
+import numpy as np
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
+from bs4 import BeautifulSoup as bs
+
+import matplotlib.pyplot as plt
+
+from css.style_page import PAGE_STYLES
+
+# Ajouter du CSS personnalisé
+st.markdown(PAGE_STYLES, unsafe_allow_html=True)
+
+# Définir le titre de la pages
+st.markdown('<h1 class="titre_application">VOUS ÊTES SUR AEVD(APPLICATION D\'EXTRACTION ET DE VISUALISATION DE DONNEES)</h1>', unsafe_allow_html=True)
+
+# Définir le titre de la pages
+st.markdown('<h1 class="titre_page">TERRAINS À VENDRE</h1>', unsafe_allow_html=True)
+st.markdown(
+        """
+        <div class="text">
+        Nous sommes ravis de vous aider à extraire des données à partir du site Dakar-Vente.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+# Fonction de chargement des données
+def load_data(dataframe, title, key):
+    st.markdown(
+        """<style>
+            .stButton {
+            text-align:left;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+    
+    if st.button(title, key):
+        # Appliquer le style au subheader
+        st.markdown(
+            """
+            <style>
+            .subheader {
+                font-size: 2em;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Appliquer le style à l'écriture de dimensions des données
+        st.markdown(
+            """
+            <style>
+            .dimensions {
+                font-size: 1.5em;
+                margin-top: 1%;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Affichage des dimensions des données
+        st.markdown('<p class="subheader"> Affichage des dimensions des données</p>',unsafe_allow_html=True)
+        st.markdown('<p class="dimensions">Dimensions des données : ' + str(dataframe.shape[0]) + ' lignes et ' + str(dataframe.shape[1]) + ' colonnes.</p>', unsafe_allow_html=True)
+        
+        # Appliquer le style au DataFrame
+        styles = [
+            dict(selector="table", props=[("margin-left", "-100%")]),
+            dict(selector="th", props=[("font-size", "16px")]),
+            dict(selector="td", props=[("font-size", "14px")])
+        ]
+        styled_dataframe = dataframe.style.set_table_styles(styles)
+        # Appliquer le style au DataFrame
+        #styled_dataframe = dataframe.style.set_properties(**{'padding-left':'-90%','width':'1000px','background-color': '#f1f1f1', 'color': 'blue'}, unsafe_allow_html=True)
+        # Afficher le DataFrame stylisé
+        st.dataframe(styled_dataframe)
+                    
+        if st.button("Réduire"):
+            st.empty()
+
+# Définir quelques styles CSS liés aux boîtes
+st.markdown('''<style> .stButton>button {
+    font-size: 12px;
+    height: 3em;
+    width: 25em;
+}</style>''', unsafe_allow_html=True)
+
+choix = st.sidebar.radio("Différents type de Scrapping", ["SCRAPER BRUT","SCRAPER CLEANING","BEAUTIFUL SOUP"])
+
+if choix == "BEAUTIFUL SOUP":
+    def extraire_page(selected_page):
+        df = pd.DataFrame()
+        for p in range(1,selected_page+1):
+            url=f'https://dakarvente.com/index.php?page=annonces_categorie&id=13&sort=&nb={p}'
+            res = requests.get(url)# Récupérer le code html de la page
+            bsoup = bs(res.text,'html')#stocker le code html dans un objet bs
+            conteneurs = bsoup.find_all('article',class_='col-xs-6 col-sm-4 col-md-6 col-lg-4 item item-product-grid-3 post')
+            data=[]
+            for conteneur in conteneurs:
+                try:
+                    link = 'https://dakarvente.com/annonces-categorie-terrains-vendre-13.html' + conteneur.find('a', class_="")['href']
+                    if link is not None:#Sauter lien location vente auto
+                        res_c = requests.get(link)
+                        bsoup_c = bs(res_c.text, 'html.parser')
+                    inf_gen = conteneur.find('div', class_='item-inner mv-effect-translate-1 mv-box-shadow-gray-1').find_all('div')
+                    prix = inf_gen[3].text.replace(' ', '').replace('FCFA', '').strip()
+                    details = inf_gen[4].text.strip()
+                    adresse = inf_gen[5].text.strip()
+                    image = conteneur.find('img')['src']
+                    dico = {
+                        'V1': details,
+                        'V2(FCFA)': prix,
+                        'V3': adresse,
+                        'V4': image
+                    }
+                    data.append(dico)
+                except:
+                    pass
+            df1 = pd.DataFrame(data)
+            df = pd.concat([df, df1],axis = 0).reset_index(drop = True)
+        return df
+    
+    # Define the page options
+    pages = list(range(1, 50))
+    selected_page = st.selectbox("CHOISIR LE NOMBRE DE PAGE ", pages)
+    
+    if selected_page in pages:
+        df = extraire_page(selected_page)
+        if not df.empty:
+            st.title("Appartements à vendre au Sénégal")
+            if str(selected_page)<="1":
+                st.header("Le résultat pour "+ str(selected_page) + " page sélectionnée :")
+            else:
+                st.header("Le résultat pour "+ str(selected_page) + " pages sélectionnée :")
+            st.write('Dimensions des données: ' + str(df.shape[0]) + ' lignes et ' + str(df.shape[1]) + ' colonnes.')           
+            st.dataframe(df)
+        else:
+            st.write("Aucun résultat à afficher.")
+    else:
+        st.write("Veuillez sélectionner une page valide.")
+############################################################################""
+if choix == "SCRAPER BRUT":
+    # Chargement des deux fichiers de données
+    dataframe1 = pd.read_csv('data/terrains_vendre_49_16.csv')
+    dataframe2 = pd.read_csv('data/terrains_vendre_15_1.csv')
+
+    # Mise à jour des valeurs de la colonne 'web-scraper-order' dans dataframe2
+    start_counter = 1382
+    counter = start_counter
+
+    for i in range(len(dataframe2)):
+        if '-' in dataframe2.loc[i, 'web-scraper-order']:
+            dataframe2.loc[i, 'web-scraper-order'] = dataframe2.loc[i, 'web-scraper-order'].split('-')[0] + '-' + str(counter)
+            counter += 1
+
+    # Concaténation des deux fichiers de données
+    concate_df = pd.concat([dataframe1, dataframe2])
+    
+    # Réinitialisation des index
+    concate_df.reset_index(drop=True, inplace=True)
+    
+    # Renommer les colonnes
+    concate_df.rename(columns={'details': 'V1', 'prix': 'V2', 'adresse': 'V3', 'image-src': 'V4'}, inplace=True)
+    
+    # Utilisation de la fonction load_data pour afficher les dimensions et les données concaténées
+    load_data(concate_df, 'Afficher les données', '1')
+if choix == "SCRAPER CLEANING":
+    # Chargement des deux fichiers de données
+    dataframe1 = pd.read_csv('data/terrains_vendre_49_16.csv')
+    dataframe2 = pd.read_csv('data/terrains_vendre_15_1.csv')
+
+    # Mise à jour des valeurs de la colonne 'web-scraper-order' dans dataframe2
+    start_counter = 1382
+    counter = start_counter
+
+    for i in range(len(dataframe2)):
+        if '-' in dataframe2.loc[i, 'web-scraper-order']:
+            dataframe2.loc[i, 'web-scraper-order'] = dataframe2.loc[i, 'web-scraper-order'].split('-')[0] + '-' + str(counter)
+            counter += 1
+
+    # Concaténation des deux fichiers de données
+    concate_df = pd.concat([dataframe1, dataframe2])
+    
+    # Réinitialisation des index
+    concate_df.reset_index(drop=True, inplace=True)
+    
+    # Supprimer les colonnes non désirées
+    columns_to_keep = ['details', 'prix', 'adresse', 'image-src']
+    concate_df = concate_df[columns_to_keep]
+    
+    # Enlever les caractères indésirables dans la colonne 'prix'
+    concate_df['prix'] = concate_df['prix'].str.replace('.', '').str.replace('FCFA', '').str.strip()
+    
+    # Remplacer les valeurs vides par 0 dans la colonne 'prix'
+    concate_df['prix'].fillna(0, inplace=True)
+    
+    # Changer le type de données de la colonne 'prix' en entier (int)
+    concate_df['prix'] = concate_df['prix'].astype(int)
+    
+    # Renommer les colonnes
+    concate_df.rename(columns={'details': 'V1', 'prix': 'V2(FCFA)', 'adresse': 'V3', 'image-src': 'V4'}, inplace=True)
+
+    # Fonction pour visualiser les données
+    def visualize_data(dataframe):
+        st.subheader('Visualisation des données')
+
+        # Bouton pour afficher un graphique
+        if st.button('Graphique À Bulles'):
+            # Comptage du nombre d'apparitions des villes
+            counts = dataframe['V3'].value_counts()
+
+            # Création du DataFrame pour le graphique
+            df = pd.DataFrame({'Annonce(s)': counts.values, 'Adresse': counts.index})
+
+            # Création du graphique de dispersion avec Plotly
+            fig = px.scatter(df, x='Annonce(s)', y='Adresse', size='Annonce(s)', hover_data=['Annonce(s)', 'Adresse'], size_max=50)
+
+            # Personnalisation des étiquettes de survol des points
+            fig.update_traces(hovertemplate='<b>Adresse: %{y}</b><br>Annonce(s): %{x}')
+    
+            # Affichage du graphique à l'aide de st.plotly_chart()
+            st.plotly_chart(fig)
+            
+            #Bouton réduire
+            if st.button("Réduire"):
+                st.empty()
+        
+        # Bouton pour afficher un graphique
+        if st.button('Graphique Des Prix'):
+            # Données des prix des appartements
+            appartements = dataframe['V3']
+            prix = dataframe['V2(FCFA)']
+
+            # Conversion des prix en millions ou milliards de FCFA
+            prix_millions = [p / 1000000 if p < 1000000000 else p / 1000000000 for p in prix]
+            unit = 'M' if max(prix) < 1000000000 else 'ML'
+
+            # Création du DataFrame
+            data = pd.DataFrame({'Adresse': appartements, f'Prix ({unit} FCFA)': prix_millions})
+
+            # Création du diagramme à barres interactif avec Streamlit
+            fig = px.bar(data, x='Adresse', y=f'Prix ({unit} FCFA)', color=f'Prix ({unit} FCFA)', title='Prix Des Terrains Par Adresse')
+            st.plotly_chart(fig)
+            
+            #Bouton réduire
+            if st.button("Réduire"):
+                st.empty()
+    
+        # Bouton pour afficher un graphique
+        if st.button('Graphique En Planètes'):
+            # Comptage du nombre d'apparitions des villes
+            counts = dataframe['V3'].value_counts()
+
+            # Création du DataFrame pour le graphique
+            df = pd.DataFrame({'Annonce(s)': counts.values, 'Adresse': counts.index})
+
+            # Création du graphique en sphère en 3D avec Plotly
+            fig = go.Figure(data=go.Scatter3d(
+                x=np.random.uniform(-1, 1, len(df)),  # Coordonnées x aléatoires pour la répartition des bulles
+                y=np.random.uniform(-1, 1, len(df)),  # Coordonnées y aléatoires pour la répartition des bulles
+                z=np.random.uniform(-1, 1, len(df)),  # Coordonnées z aléatoires pour la répartition des bulles
+                mode='markers',
+                marker=dict(
+                    size=df['Annonce(s)'],
+                    color=df['Annonce(s)'],
+                    colorscale='Viridis',
+                    opacity=0.8
+                ),
+                hovertemplate='<b>Adresse: %{text}</b><br>Annonce(s): %{marker.size}',
+                text=df['Adresse']
+            ))
+
+            # Animation pour faire tourner les sphères
+            frames = []
+            for i in range(0, 360, 5):
+                frame = go.Frame(
+                    layout=dict(scene=dict(camera=dict(eye=dict(x=1.5*np.cos(np.deg2rad(i)),
+                                                                y=1.5*np.sin(np.deg2rad(i)),
+                                                                z=1.5))))
+                )
+                frames.append(frame)
+
+            fig.frames = frames
+
+            # Personnalisation de l'aspect du graphique en sphère en 3D
+            fig.update_layout(scene=dict(
+                xaxis=dict(showticklabels=False, showgrid=False, visible=False),
+                yaxis=dict(showticklabels=False, showgrid=False, visible=False),
+                zaxis=dict(showticklabels=False, showgrid=False, visible=False),
+                aspectmode='cube'
+            ))
+
+            # Affichage du graphique à l'aide de st.plotly_chart()
+            st.plotly_chart(fig)
+            
+            #Bouton réduire
+            if st.button("Réduire"):
+                st.empty()
+            
+    # Utilisation de la fonction load_data pour afficher les dimensions et les données concaténées
+    load_data(concate_df, 'Afficher les données', '1')
+         
+    visualize_data(concate_df)
